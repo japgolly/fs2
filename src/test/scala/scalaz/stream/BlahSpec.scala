@@ -16,22 +16,20 @@ object BlahSpec extends Properties("NAME_PENDING") {
 
   def runAsync(t: Task[Unit]): Unit = t.runAsync(_ => ())
 
-  property("NAME_PENDING") = secure {
+  implicit def orderInt = scalaz.Order.fromScalaOrdering[Int]
 
-    val (upstream, downstreamW, downstreamO) = async.NAME_PENDING[List[Int], Int, Int](
-      (q, as) => (as.toList ::: q).sorted //, recv: (Q, Seq[A]) => Q
-      , q => if (q.isEmpty) None else Some((q.init, q.last)) //, pop: Q => Option[(Q, A)]
-      , _ => false // , queueFull: Q => Boolean
-      , q => q.size //, query: (P, Q) => W
-    , Nil)
+  property("prioritisedQueue") = forAll {
+    (l: List[Int]) =>
+
+    val (upstream, downstreamW, downstreamO) = async.prioritisedQueue[Int, Int](_.size)
 
     try {
       val initialWorkerCount = 4
-      val workBatch2 = List(1, 50, 3, 52, 2, 51)
+      val expQueueSize = l.size
 
       val latch1 = new CountDownLatch(initialWorkerCount + 1)
       val latch2 = new CountDownLatch(initialWorkerCount + 1)
-      val latch3 = new CountDownLatch(initialWorkerCount + 1 + workBatch2.size)
+      val latch3 = new CountDownLatch(initialWorkerCount + 1 + l.size)
 
       @volatile var got = Vector.empty[Int] // No sync because it will be single-threaded when it matters
 
@@ -58,8 +56,9 @@ object BlahSpec extends Properties("NAME_PENDING") {
       latch1.await(2, TimeUnit.SECONDS) :| "All workers should have a job" && {
 
         // Queue up new jobs while all workers are busy
-        runAsync(emitAll(workBatch2, upstream))
-        downstreamW.take(1).runLog.run.toList == List(6) && {
+        runAsync(emitAll(l, upstream))
+        val queueSize = downstreamW.take(1).runLog.run.toList.head
+        (queueSize == expQueueSize) :| s"Queue size should be $expQueueSize" && {
           got = Vector.empty
           latch2.getCount == 1 && {
 
@@ -73,7 +72,7 @@ object BlahSpec extends Properties("NAME_PENDING") {
               latch3.getCount == 0 && {
 
                 // Confirm jobs were prioritised before doled out
-                (got == workBatch2.sorted.reverse) :| "Output should be emitted in order of priority"
+                (got == l.sorted) :| s"Output should be emitted in order of priority: $got"
               }
             }
           }
@@ -81,7 +80,7 @@ object BlahSpec extends Properties("NAME_PENDING") {
       }
 
     } finally {
-//      runAsync(j.downstreamClose(End))
+//      runAsync(j.downstreamClose(End)) // ooops, better figure out how to close
     }
 
 

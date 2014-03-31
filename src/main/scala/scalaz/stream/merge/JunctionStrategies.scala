@@ -75,7 +75,7 @@ protected[stream] object JunctionStrategies {
 
     queueStrategy[Queue[A], Int, A](
       (q,as) => q ++ as // recv: (Q, Seq[A]) => Q
-      ,q => if (q.isEmpty) None else Some((q.tail, q.head)) // , pop: Q => Option[(Q, A)]
+      ,q => if (q.isEmpty) None else Some(q.dequeue) // , pop: Q => Option[(Q, A)]
       ,if (max>0) (_.size >= max) else (_ => false) // , queueFull: Q => Boolean
       ,_.size // , query: Q => W
       ,Queue()
@@ -87,7 +87,7 @@ protected[stream] object JunctionStrategies {
 
   def queueStrategy[Q, W, A](
     recv: (Q, Seq[A]) => Q,
-    pop: Q => Option[(Q, A)],
+    pop: Q => Option[(A, Q)],
     queueFull: Q => Boolean,
     query: Q => W,
     initialQ: Q): JunctionStrategy[W, A, A] = {
@@ -105,7 +105,7 @@ protected[stream] object JunctionStrategies {
         pop(q) match {
           case None =>
             goodToEmit = false
-          case Some((q2, work)) =>
+          case Some((work, q2)) =>
             q = q2
             jas ::= WriteO[W, A](work :: Nil, i.next())
           // goodToEmit = allowDownstream(p)

@@ -2,7 +2,7 @@ package scalaz.stream
 
 import Process._
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
-import scalaz.\/
+import scalaz.{Order, Heap, \/}
 import scalaz.concurrent._
 import scalaz.stream.actor.actors
 import scalaz.stream.actor.message
@@ -108,7 +108,7 @@ package object async {
 
   def NAME_PENDING[Q, W, A](
     recv: (Q, Seq[A]) => Q,
-    pop: Q => Option[(Q, A)],
+    pop: Q => Option[(A, Q)],
     queueFull: Q => Boolean,
     query: Q => W,
     initialQ: Q)
@@ -118,6 +118,15 @@ package object async {
     val j = Junction(js, Process.halt)(S)
     (j.upstreamSink, j.downstreamW, j.downstreamO)
   }
+
+  def prioritisedQueue[W, A](query: Heap[A] => W)(implicit S: Strategy = Strategy.DefaultStrategy, o: Order[A]) =
+    NAME_PENDING[Heap[A], W, A](
+      (q, as) => (q /: as)((qq, a) => qq insert a) //, recv: (Q, Seq[A]) => Q
+      , _.uncons //, pop: Q => Option[(Q, A)]
+      , _ => false // , queueFull: Q => Boolean
+      , query
+      , Heap.Empty[A]
+    )
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
