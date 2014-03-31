@@ -106,6 +106,18 @@ package object async {
     actors.queue[A] match { case (snk, p) => (actorQueue(snk), p) }
 
 
+  def NAME_PENDING[Q, W, A](
+    recv: (Q, Seq[A]) => Q,
+    pop: Q => Option[(Q, A)],
+    queueFull: Q => Boolean,
+    query: Q => W,
+    initialQ: Q)
+    (implicit S: Strategy = Strategy.DefaultStrategy)
+    : (Sink[Task, A], Process[Task, W], Process[Task, A]) = {
+    val js = JunctionStrategies.queueStrategy[Q, W, A](recv, pop, queueFull, query, initialQ)
+    val j = Junction(js, Process.halt)(S)
+    (j.upstreamSink, j.downstreamW, j.downstreamO)
+  }
 
   /** 
    * Convert an `Queue[A]` to a `Sink[Task, A]`. The `cleanup` action will be 
